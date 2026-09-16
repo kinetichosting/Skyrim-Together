@@ -1,47 +1,59 @@
-# Building the server:
-#   x64:   $ docker build -t imagename .
-#   arm64: $ docker build --platform linux/arm64 -t imagename .
-#   multi-platform (build and push):
-#     $ docker buildx create --name st-server-multiarch --use
-#     $ docker buildx build --platform linux/amd64,linux/arm64 -t imagename:tag --push .
-
 FROM debian:12 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV XMAKE_ROOT=y
+
 SHELL ["/bin/bash", "-c"]
 
-# Passed from the workflow; needed so that xmake always picks github.com as host
-ARG GITHUB_ACTIONS
-
-# Get packages and xmake
-
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl pkg-config git ca-certificates unzip libssl-dev && \
-    rm -rf /var/lib/apt/lists/* && \
-    curl -fsSL https://xmake.io/shget.text | bash
-
-# Copy source and build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        pkg-config \
+        git \
+        ca-certificates \
+        unzip \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://xmake.io/shget.text | bash
 
 WORKDIR /src
 COPY . /src
-
-RUN --mount=type=cache,target=/root/.xmake/packages \
-    --mount=type=cache,target=/root/.xmake/repositories \
-    source ~/.xmake/profile && \
-    xmake config -y -m release && \
-    xmake -y && \
-    xmake install -y -o package
-
-# Actual server runtime image; (todo: maybe reconsider 'distroless' in the future)
+RUN source /root/.xmake/profile \
+    && xmake config -y -m release \
+    && xmake -y -j 1 \
+    && xmake install -y -o /src/package
 
 FROM debian:12-slim AS runtime
 
-WORKDIR /st-server
+ENV DEBIAN_FRONTEND=noninteractive
+ENV USER=container
+ENV HOME=/home/container
 
-COPY --from=builder \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libstdc++6 \
+        libgcc-s1 \
+        tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -d /home/container -s /bin/bash container
+
+COPY --from=builder --chown=container:container \
     /src/package/lib/libSTServer.so \
+    /src/package/bin/crashpad_handler \
     /src/package/bin/SkyrimTogetherServer \
-    /st-server/
+    /opt/skyrim-together/
 
-ENTRYPOINT ["./SkyrimTogetherServer"]
-EXPOSE 10578/udp
+RUN chmod +x \
+    /opt/skyrim-together/SkyrimTogetherServer \
+    /opt/skyrim-together/crashpad_handler
+
+USER        container
+ENV         USER=container HOME=/home/container
+ENV         PATH="/opt/skyrim-together:${PATH}"
+ENV         LD_LIBRARY_PATH="/opt/skyrim-together"
+WORKDIR     /home/container
+
+ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
+CMD ["/opt/skyrim-together/SkyrimTogetherServer"]

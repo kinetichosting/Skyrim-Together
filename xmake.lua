@@ -42,6 +42,7 @@ add_requires(
     "gtest v1.14.0", 
     "mem 1.0.0", 
     "glm 0.9.9+8", 
+    "sentry-native 0.7.1",
     "zlib v1.3.1"
 )
 if is_plat("windows") then
@@ -61,6 +62,7 @@ if is_plat("linux") then
 end
 
 add_requireconfs("cpp-httplib", {configs = {ssl = true}})
+add_requireconfs("sentry-native", {configs = {backend = "crashpad"}})
 --[[
 add_requireconfs("magnum", { configs = { sdl2 = true }})
 add_requireconfs("magnum-integration",  { configs = { imgui = true }})
