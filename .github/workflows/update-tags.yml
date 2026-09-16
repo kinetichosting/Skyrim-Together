@@ -1,0 +1,25 @@
+name: Sync upstream tags
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and publish upstream tags
+        run: |
+          git remote add upstream https://github.com/tiltedphoques/TiltedEvolution.git
+          git fetch upstream '+refs/tags/*:refs/tags/*'
+          git push origin 'refs/tags/*:refs/tags/*'
